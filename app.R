@@ -1,6 +1,7 @@
 if(!require(shiny)) install.packages("shiny", repos = "http://cran.us.r-project.org")
 if(!require(shinydashboard)) install.packages("shinydashboard", repos = "http://cran.us.r-project.org")
 if(!require(shinyWidgets)) install.packages("shinyWidgets", repos = "http://cran.us.r-project.org")
+if(!require(shinyjs)) install.packages("shinyjs", repos = "http://cran.us.r-project.org")
 if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
 if(!require(cowplot)) install.packages("cowplot", repos = "http://cran.us.r-project.org")
 if(!require(readr)) install.packages("readr", repos = "http://cran.us.r-project.org")
@@ -15,6 +16,7 @@ if(!require(DT)) install.packages("DT", repos = "http://cran.us.r-project.org")
 library(shiny)
 library(shinydashboard)
 library(shinyWidgets)
+library(shinyjs)
 library(tidyverse)
 library(cowplot)
 library(readr)
@@ -37,14 +39,17 @@ adm_0 <- vect(here("www", "gadm", "gadm41_NGA_0_pk.rds"))
 adm_1 <- vect(here("www", "gadm", "gadm41_NGA_1_pk.rds"))
 adm_2 <- vect(here("www", "gadm", "gadm41_NGA_2_pk.rds"))
 
-# Define UI for application that draws a histogram
+
+# Define UI ---------------------------------------------------------------
+
 ui <- dashboardPage(
     
+    # Setting up the dashboard
     skin = "purple",
     
     dashboardHeader(title = "SCAPES Nigeria",
                     titleWidth = 450),
-    
+    # Setting up the sidebar
     dashboardSidebar(
         width = 350,
         sidebarMenu(
@@ -74,7 +79,7 @@ ui <- dashboardPage(
                     )),
             
             
-            ## Village sites ---------------------------------------------------------
+            ## All sites ---------------------------------------------------------
             
             tabItem(tabName = "village_sites",
                     position = "left",
@@ -140,6 +145,9 @@ ui <- dashboardPage(
                         
                     )),
             
+
+                ### Group 1 sites -----------------------------------------------------------
+
             tabItem(tabName = "group_1",
                     fluidRow(
                         box(width = 12,
@@ -161,6 +169,7 @@ ui <- dashboardPage(
       }")
       ),
       
+      # Built up land plots
       fluidRow(
           box(width = 12,
               id="builtup", 
@@ -195,6 +204,7 @@ ui <- dashboardPage(
           )
       ),
       
+      # Cropland plots
       fluidRow(
           box(width = 12,
               id="cropland", 
@@ -229,6 +239,7 @@ ui <- dashboardPage(
           )
       ),
       
+      # Grassland plots
       fluidRow(
           box(width = 12,
               id="grassland", 
@@ -263,6 +274,7 @@ ui <- dashboardPage(
           )
       ),
       
+      # Shrubland plots
       fluidRow(
           box(width = 12,
               id="shrubland", 
@@ -297,6 +309,7 @@ ui <- dashboardPage(
           )
       ),
       
+      # Treecover plots
       fluidRow(
           box(width = 12,
               id="treecover", 
@@ -331,6 +344,7 @@ ui <- dashboardPage(
           )
       ),
       
+      # Map of sites for Group 1 comparison
       fluidRow(
           box(width = 12,
               id = "map_group1",
@@ -350,8 +364,14 @@ ui <- dashboardPage(
     )
 )
 
-# Define server logic required to draw a histogram
+
+# Define Server -----------------------------------------------------------
+
 server <- function(input, output) {
+    
+
+# Produce all sites map ---------------------------------------------------
+
     
     values <- reactiveValues(sites_final_filtered = site_df)
     
@@ -430,7 +450,11 @@ server <- function(input, output) {
             addScaleBar()
         
     })
-    
+
+
+# Produce plots for landuse type ------------------------------------------
+
+
     group_1_plot <- site_df %>%
         tibble() %>%
         select(-geometry) %>%
@@ -487,6 +511,10 @@ server <- function(input, output) {
                  .find('[data-widget=collapse]')
                  .click();
       });")
+    
+
+# Produce map for Group 1 sites -------------------------------------------
+
     
     output$map_group1 <- renderLeaflet({
         
