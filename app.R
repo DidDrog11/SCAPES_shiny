@@ -934,7 +934,7 @@ server <- function(input, output) {
              "Tree Cover: ", site$treecover_percent*100, "%", "<br/>",
              "Cropland: ", site$cropland_percent*100, "%", "<br/>",
              "Grassland: ", site$grassland_percent*100, "%", "<br/>",
-             "Shrublandland: ", site$shrubland_percent*100, "%", "<br/>",
+             "Shrubland: ", site$shrubland_percent*100, "%", "<br/>",
              "Lassa occ: ", round(site$lassa_occ, 2))%>%
         lapply(htmltools::HTML)
     }
@@ -1087,7 +1087,7 @@ server <- function(input, output) {
              "Tree Cover: ", site$treecover_percent*100, "%", "<br/>",
              "Cropland: ", site$cropland_percent*100, "%", "<br/>",
              "Grassland: ", site$grassland_percent*100, "%", "<br/>",
-             "Shrublandland: ", site$shrubland_percent*100, "%", "<br/>",
+             "Shrubland: ", site$shrubland_percent*100, "%", "<br/>",
              "Lassa occ: ", round(site$lassa_occ, 2))%>%
         lapply(htmltools::HTML)
     }
@@ -1239,7 +1239,7 @@ server <- function(input, output) {
              "Tree Cover: ", site$treecover_percent*100, "%", "<br/>",
              "Cropland: ", site$cropland_percent*100, "%", "<br/>",
              "Grassland: ", site$grassland_percent*100, "%", "<br/>",
-             "Shrublandland: ", site$shrubland_percent*100, "%", "<br/>",
+             "Shrubland: ", site$shrubland_percent*100, "%", "<br/>",
              "Lassa occ: ", round(site$lassa_occ, 2))%>%
         lapply(htmltools::HTML)
     }
