@@ -18,7 +18,7 @@ library(here)
 library(DT)
 library(geodata)
 
-sites_raw <- read_csv(here("www", "sites_unfiltered_2km_2023-08-30.csv"))
+sites_raw <- read_rds(here("www", "sites_unfiltered_2km_2023-09-13.rds"))
 
 column_order <- c("village_id", "village", "source", "longitude", "latitude", "lassa_occ", "num_buildings", "treecover_tot_area", "state", "LGA", "SenDist",
                   "shrubland_tot_area", "grassland_tot_area", "builtup_tot_area", "cropland_tot_area",
@@ -29,7 +29,7 @@ column_order <- c("village_id", "village", "source", "longitude", "latitude", "l
 
 sites_cleaned <- sites_raw %>%
   mutate(across(contains("percent"), \(x) round(x, digits = 2)),
-         across(contains("area"), \(x) round(x, digits = 4)),
+         across(contains("area"), \(x) round(x, digits = 3)),
          build_area = round(build_area, 0),
          lassa_occ = round(lassa_occ, 4)) %>%
   select(all_of(column_order))
@@ -47,9 +47,9 @@ current_groups <- bind_rows(
                      c("Ijibollo", "Apiapum Eja", "Obagu Ete", "Okum", "Ovoaba", "Azu Anyim", "Ijutum"),
                      c("Ndingele", "Olua", "Ominiyi", "Ominyi", "Amaguanyim", "Ndowa", "Ndowu"),
                      c("Ofianko", "Ndiogbokote", "Okponga"))),
-  tibble(group = rep(3, 30),
-         cluster = c(rep("3G", 6), rep("3H", 6), rep("3K", 4), rep("3L", 4), rep("3M", 5), rep("3N", 5)),
-         village = c(c("Ugbala", "Ozante", "Ndiawala", "Izenyi", "Offianwe", "Isi Ohumini"),
+  tibble(group = rep(3, 31),
+         cluster = c(rep("3G", 7), rep("3H", 6), rep("3K", 4), rep("3L", 4), rep("3M", 5), rep("3N", 5)),
+         village = c(c("Ugbala", "Ozante", "Ndiawala", "Izenyi", "Offianwe", "Isi Ohumini", "Onuenyim"),
                      c("Mkpumeakwaokoro", "Edenyaka", "Inyinba", "Ndibinaofia", "Ndibiofa", "Okpoduma"),
                      c("Ijilaga", "Ijibollo", "Odariko", "Ubeagu Ndikuda"),
                      c("Enyibichiri", "Elekpe", "Ndiofutu Echara", "Mgbabu"),
@@ -86,3 +86,4 @@ write_rds(sites_final, here("www", "sites_final.rds"))
 NGA_0 <- gadm("NGA", level = 0, path = here("www"))
 NGA_1 <- gadm("NGA", level = 1, path = here("www"))
 NGA_2 <- gadm("NGA", level = 2, path = here("www"))
+

@@ -7,11 +7,13 @@ if(!require(cowplot)) install.packages("cowplot", repos = "http://cran.us.r-proj
 if(!require(readr)) install.packages("readr", repos = "http://cran.us.r-project.org")
 if(!require(leaflet)) install.packages("leaflet", repos = "http://cran.us.r-project.org")
 if(!require(leaflet.extras)) install.packages("leaflet.extras", repos = "http://cran.us.r-project.org")
+if(!require(plotly)) install.packages("plotly", repos = "http://cran.us.r-project.org")
 if(!require(ggiraph)) install.packages("ggiraph", repos = "http://cran.us.r-project.org")
 if(!require(terra)) install.packages("terra", repos = "http://cran.us.r-project.org")
 if(!require(sf)) install.packages("sf", repos = "http://cran.us.r-project.org")
 if(!require(here)) install.packages("here", repos = "http://cran.us.r-project.org")
 if(!require(DT)) install.packages("DT", repos = "http://cran.us.r-project.org")
+if(!require(conflicted)) install.packages("conflicted")
 
 library(shiny)
 library(shinydashboard)
@@ -22,17 +24,26 @@ library(cowplot)
 library(readr)
 library(leaflet)
 library(leaflet.extras)
+library(plotly)
 library(ggiraph)
 library(terra)
 library(sf)
 library(here)
 library(DT)
+library(conflicted)
+
+conflict_prefer("pickerInput", "shinyWidgets")
+conflict_prefer("box", "shinydashboard")
+conflict_prefer("filter", "dplyr")
+conflict_prefer("dataTableOutput", "DT")
+conflict_prefer("layout", "plotly")
 
 # Data has been produced in an associated but separate repository
 # Data is stored in /www and there is an associated R scrip 00_pre-processing.R that does some final cleaning outside of the app
 site_df <- read_rds(here("www", "sites_final.rds")) %>%
   st_as_sf(coords = c("longitude", "latitude"),
-           crs = "EPSG:4326")
+           crs = "EPSG:4326") %>%
+  mutate(village_unique = paste0(village, ": ", village_id))
 lc <- rast(here("www", "ds_processed_raster.tif"))
 
 adm_0 <- vect(here("www", "gadm", "gadm41_NGA_0_pk.rds"))
@@ -56,9 +67,11 @@ ui <- dashboardPage(
       menuItem("Homepage", tabName = "homepage", icon = icon("passport")),
       menuItem("Site selection", icon = icon("house"),
                menuSubItem("Potential village sites", tabName = "village_sites"),
-               menuSubItem("Group 1", tabName = "group_1"),
-               menuSubItem("Group 2", tabName = "group_2"),
-               menuSubItem("Group 3", tabName = "group_3"))
+               menuSubItem("Group 1", tabName = "group_1", icon = icon("1")),
+               menuSubItem("Group 2", tabName = "group_2", icon = icon("2")),
+               menuSubItem("Group 3", tabName = "group_3", icon = icon("3")),
+               menuSubItem("Produce site lists", tabName = "sitelists", icon = icon("arrow-down-1-9"))),
+      menuItem("Rodent sampling simulations", tabName = "rodentsample", icon = icon("paw"))
     )
   ),
   
@@ -767,7 +780,94 @@ ui <- dashboardPage(
                 ))
               
               
-      )
+      ),
+      
+      
+      ## Selecting sites tab -----------------------------------------------------
+      
+      tabItem(tabName = "sitelists",
+              fluidRow(
+                box(width = 12,
+                    id = "sitelist-entry",
+                    title = "Enter manually identified sites",
+                    p("Select the sites to included and specify their grouping in the below sections. This will update the underlying data and will be plotted on the map below. Selections can then be made to update the potential sites that are closely identified with the index site.")),
+                box(width = 12, 
+                    title = "Define the focal villages for Group 1.",
+                    selectizeInput(inputId = "group1_manual",
+                                   label = "Select focal villages to be entered as Group 1.",
+                                   choices = site_df$village_unique,
+                                   selected = site_df$village_unique[str_detect(site_df$village_unique, "Ogamana|Mkpaya|Okunbongha|Afono")],
+                                   options = list('actions-box' = TRUE),
+                                   multiple = TRUE),
+                    textOutput("manual_group1"),
+                    sliderInput("radius_village", label = "Set the radius for inclusion of villages X km from these focal villages.",
+                                min = 0,
+                                max = 100,
+                                value = c(0, 100),
+                                step = 0.5),
+                    collapsible = TRUE),
+                box(width = 12,
+                    title = "This map shows the focal and nearby villages selected above.",
+                    collapsible = TRUE,
+                    leafletOutput("manual_group1_map"),
+                )
+              )),
+      
+      
+      ## Simulating rodent sampling ----------------------------------------------
+      
+      tabItem(tabName = "rodentsample",
+              fluidRow(
+                box(width = 12,
+                    h1("Simulation of rodent sample size"),
+                    p("Simulation of capture rate of Mastomys natalensis in Ebonyi, Cross River and Benue and a simulation of their seroprevalence for LASV."),
+                    p("The simulation is based on the following assumptions."),
+                    tags$ol(
+                      tags$li("The rodent population is at equilibrium with no substantial changes in rodent abundance between sampling."),
+                      tags$li("The rodent population is closed with no substantial immigration or emmigration."),
+                      tags$li("All individuals have an equal chance of being captured and this is not impacted by seroprevalence to LASV or spatial structuring of the population across land use types."),
+                      tags$li("The capture of non-Mastomys individuals is not associated with seroprevalence among the Mastomys population.")
+                    ),
+                    p("The starting conditions for the simulation can be modified using the below options. For reference the seroprevalence among Mastomys natalensis trapped in Ebonyi state was 41.6%. Although this was targetted sampling. Five other species were also found to be positive ranging from 31-100% of tested individuals. The trap success (or capture rate) for Mastomys in Ebonyi was 3% although this ranged from 0.6-7.8% across the state and whether the traps were inside households or fields."),
+                    p("Previously used conditions include."),
+                    tags$ol(
+                      tags$li("Light touch: TN = 6,000, TS = 0.01, Seroprevalence = 0.05"),
+                      tags$li("Ebonyi low prevalence: TN = 6,000, TS = 0.0125, Seroprevalence = 0.15"),
+                      tags$li("Ebonyi high prevalence: TN = 6,000, TS = 0.0125, Seroprevalence = 0.48"),
+                      tags$li("Ondo high prevalence: TN = 6,000, TS = 0.067, Seroprevalence = 0.45"),
+                      tags$li("Cross River low prevalence: TN = 6,000, TS = 0.0125, Seroprevalence = 0.08"),
+                      tags$li("Ebonyi low TS: TN = 6,000, TS = 0.005, Seroprevalence = 0.15"),
+                      tags$li("Ebonyi moderate TS: TN = 6,000, TS = 0.01, Seroprevalence = 0.15"),
+                      tags$li("Ebonyi high TS: TN = 6,000, TS = 0.08, Seroprevalence = 0.15")
+                    ),
+                    actionButton("load_results", "Load saved simulations")
+                )),
+              fluidRow(
+                box(width = 12,
+                    h2("Simulation settings"),
+                    textInput("sim_name", "Simulation name:", ""))),
+              fluidRow(box(width = 12,
+                           column(width = 4, 
+                                  numericInput("abundance", "Mastomys population size:", 100000)),
+                           column(width = 4, 
+                                  numericInput("trap_nights", "Number of trap nights:", 6000)),
+                           column(width = 4, 
+                                  numericInput("trap_success", "Proportion of traps set capturing a Mastomys (i.e., Percentage TS/100):", 0.03)),
+                           column(width = 4,
+                                           numericInput("seroprevalence", "Expected Mastomys seroprevalence:", 0.15)),
+                           column(width = 4,
+                                           numericInput("n_simulations", "Number of simulations to run:", 10000)),
+                           actionButton("run_simulation", "Run Simulation"))),
+              fluidRow(box(width = 12,
+                           uiOutput("model_checkboxes"))),
+              fluidRow(box(width = 12,
+                           h2("Simulation results"),
+                           DTOutput("simulation_results_table"))),
+              fluidRow(box(width = 12,
+                  plotlyOutput("simulation_results",
+                             height = "850px")))
+              )
+      
     )
   )
 )
@@ -882,6 +982,7 @@ server <- function(input, output) {
     lapply(., function(x) {
       
       ggplot(x) +
+        geom_violin(aes(x = value, y = group_1, fill = group_1)) +
         geom_point(aes(x = value, y = group_1, colour = group_1), alpha = 0.3, position = position_jitter(height = 0.6, width = 0, seed = 123)) +
         labs(title = unique(x$metric),
              y = "Group 1",
@@ -968,6 +1069,7 @@ server <- function(input, output) {
     leaflet() %>%
       addProviderTiles('Esri.WorldImagery', group = "Satellite") %>%
       addProviderTiles("OpenStreetMap.Mapnik", group = "OSM") %>%
+      addRasterImage(lc, opacity = 0.8, group = "Landuse raster") %>%
       addCircleMarkers(group = "Current Group 1",
                        data = group_1,
                        radius = 4,
@@ -1014,8 +1116,8 @@ server <- function(input, output) {
                        color = "white",
                        weight = 2) %>%
       addLayersControl(baseGroups = c("Satellite", "OSM"),
-                       overlayGroups = c("Current Group 1", "1) Meet Group 1 - builtup, cropland", "2) Within 5km of current Group 1", "3) Meet Group 1 - builtup, cropland, within 5km", "4) Fall within min/max Group 1 - builtup, cropland, grassland, shrubland, treecover")) %>%
-      hideGroup(c("1) Meet Group 1 - builtup, cropland", "2) Within 5km of current Group 1", "3) Meet Group 1 - builtup, cropland, within 5km", "4) Fall within min/max Group 1 - builtup, cropland, grassland, shrubland, treecover")) %>%
+                       overlayGroups = c("Landuse raster", "Current Group 1", "1) Meet Group 1 - builtup, cropland", "2) Within 5km of current Group 1", "3) Meet Group 1 - builtup, cropland, within 5km", "4) Fall within min/max Group 1 - builtup, cropland, grassland, shrubland, treecover")) %>%
+      hideGroup(c("Landuse raster", "1) Meet Group 1 - builtup, cropland", "2) Within 5km of current Group 1", "3) Meet Group 1 - builtup, cropland, within 5km", "4) Fall within min/max Group 1 - builtup, cropland, grassland, shrubland, treecover")) %>%
       addScaleBar()
     
     
@@ -1025,6 +1127,9 @@ server <- function(input, output) {
   # Produce plots for landuse Group 2 ---------------------------------------
   group_2_plot <- site_df %>%
     tibble() %>%
+    filter(travel_time >= 30) %>%
+    filter(distance_to_road >= 1.5) %>%
+    # filter(builtup_percent >= 0.1) %>%
     select(-geometry) %>%
     mutate(group_2 = case_when(group == 2 ~ TRUE,
                                TRUE ~ FALSE)) %>%
@@ -1042,6 +1147,7 @@ server <- function(input, output) {
     lapply(., function(x) {
       
       ggplot(x) +
+        geom_violin(aes(x = value, y = group_2, fill = group_2)) +
         geom_point(aes(x = value, y = group_2, colour = group_2), alpha = 0.3, position = position_jitter(height = 0.6, width = 0, seed = 123)) +
         labs(title = unique(x$metric),
              y = "Group 2",
@@ -1093,24 +1199,35 @@ server <- function(input, output) {
     }
     
     group_2 <- site_df %>%
+      filter(travel_time >= 30) %>%
+      filter(distance_to_road >= 1.5) %>%
       filter(group == 2)
     
     group_2_buffer <- group_2 %>%
       st_buffer(dist = 5000)
     
     group_2_1 <- site_df %>%
+      filter(travel_time >= 30) %>%
+      filter(distance_to_road >= 1.5) %>%
       filter((group != 2 | is.na(group))) %>%
       filter((builtup_patch_area < 0.2 & cropland_patch_area < 2))
     
     group_2_2 <- site_df %>%
+      filter(travel_time >= 30) %>%
+      filter(distance_to_road >= 1.5) %>%
+      filter(builtup_percent <= 0.2) %>%
       st_filter(group_2_buffer, .predicate = st_within)
     
     group_2_3 <- site_df %>%
+      filter(travel_time >= 30) %>%
+      filter(distance_to_road >= 1.5) %>%
       filter((group != 2 | is.na(group))) %>%
       filter((builtup_patch_area < 0.2 & cropland_patch_area < 2)) %>%
       st_filter(group_2_buffer, .predicate = st_within)
     
     group_2_4 <- site_df %>%
+      filter(travel_time >= 30) %>%
+      filter(distance_to_road >= 1.5) %>%
       filter((group != 2 | is.na(group))) %>%
       filter((builtup_patch_area >= min(group_2$builtup_patch_area) & builtup_patch_area <= max(group_2$builtup_patch_area))) %>%
       filter((cropland_patch_area >= min(group_2$cropland_patch_area) & cropland_patch_area <= max(group_2$cropland_patch_area))) %>%
@@ -1121,6 +1238,7 @@ server <- function(input, output) {
     leaflet() %>%
       addProviderTiles('Esri.WorldImagery', group = "Satellite") %>%
       addProviderTiles("OpenStreetMap.Mapnik", group = "OSM") %>%
+      addRasterImage(lc, opacity = 0.8, group = "Landuse raster") %>%
       addCircleMarkers(group = "Current Group 2",
                        data = group_2,
                        radius = 4,
@@ -1167,8 +1285,8 @@ server <- function(input, output) {
                        color = "white",
                        weight = 2) %>%
       addLayersControl(baseGroups = c("Satellite", "OSM"),
-                       overlayGroups = c("Current Group 2", "1) Meet Group 2 - builtup, cropland", "2) Within 5km of current Group 2", "3) Meet Group 2 - builtup, cropland, within 5km", "4) Fall within min/max Group 2 - builtup, cropland, grassland, shrubland, treecover")) %>%
-      hideGroup(c("1) Meet Group 2 - builtup, cropland", "2) Within 5km of current Group 2", "3) Meet Group 2 - builtup, cropland, within 5km", "4) Fall within min/max Group 2 - builtup, cropland, grassland, shrubland, treecover")) %>%
+                       overlayGroups = c("Landuse raster", "Current Group 2", "1) Meet Group 2 - builtup, cropland", "2) Within 5km of current Group 2", "3) Meet Group 2 - builtup, cropland, within 5km", "4) Fall within min/max Group 2 - builtup, cropland, grassland, shrubland, treecover")) %>%
+      hideGroup(c("Landuse raster", "1) Meet Group 2 - builtup, cropland", "2) Within 5km of current Group 2", "3) Meet Group 2 - builtup, cropland, within 5km", "4) Fall within min/max Group 2 - builtup, cropland, grassland, shrubland, treecover")) %>%
       addScaleBar()
     
     
@@ -1273,6 +1391,7 @@ server <- function(input, output) {
     leaflet() %>%
       addProviderTiles('Esri.WorldImagery', group = "Satellite") %>%
       addProviderTiles("OpenStreetMap.Mapnik", group = "OSM") %>%
+      addRasterImage(lc, opacity = 0.8, group = "Landuse raster") %>%
       addCircleMarkers(group = "Current Group 3",
                        data = group_3,
                        radius = 4,
@@ -1319,14 +1438,229 @@ server <- function(input, output) {
                        color = "white",
                        weight = 2) %>%
       addLayersControl(baseGroups = c("Satellite", "OSM"),
-                       overlayGroups = c("Current Group 3", "1) Meet Group 3 - builtup, cropland", "2) Within 5km of current Group 3", "3) Meet Group 3 - builtup, cropland, within 5km", "4) Fall within min/max Group 3 - builtup, cropland, grassland, shrubland, treecover")) %>%
-      hideGroup(c("1) Meet Group 3 - builtup, cropland", "2) Within 5km of current Group 3", "3) Meet Group 3 - builtup, cropland, within 5km", "4) Fall within min/max Group 3 - builtup, cropland, grassland, shrubland, treecover")) %>%
+                       overlayGroups = c("Landuse raster", "Current Group 3", "1) Meet Group 3 - builtup, cropland", "2) Within 5km of current Group 3", "3) Meet Group 3 - builtup, cropland, within 5km", "4) Fall within min/max Group 3 - builtup, cropland, grassland, shrubland, treecover")) %>%
+      hideGroup(c("Landuse raster", "1) Meet Group 3 - builtup, cropland", "2) Within 5km of current Group 3", "3) Meet Group 3 - builtup, cropland, within 5km", "4) Fall within min/max Group 3 - builtup, cropland, grassland, shrubland, treecover")) %>%
       addScaleBar()
     
     
   })
   
   
+  # Selecting sites tab -----------------------------------------------------
+  
+  output$manual_group1 <- renderPrint({
+    cat("Selected Group 1 focal villages: ")
+    cat(paste0(input$group1_manual, sep = ", "))
+  })
+  
+  get_village_colour_palette <- function(num_selected) {
+    colour_palette <- viridis::viridis_pal()(num_selected)
+  }
+  
+  calculate_distances <- function(focal_villages_1_df) {
+    
+    focal_villages_1_df %>%
+      group_by(village_unique) %>%
+      group_split() %>%
+      lapply(., function(x) {
+        
+        focal_village_unique = unique(x$village_unique)
+        focal_location = x %>%
+          filter(village_unique == focal_village_unique) %>%
+          select(village, geometry)
+        
+        site_df %>%
+          mutate(distance_from_focal = as.numeric(st_distance(site_df$geometry, focal_location$geometry)),
+                 focal_village_unique = focal_village_unique)
+        
+      }) %>%
+      bind_rows()
+    
+  }
+  
+  observeEvent(input$group1_manual, {
+    
+    focal_villages_1 <- input$group1_manual
+    
+    num_selected <- length(focal_villages_1)
+    colours <- get_village_colour_palette(num_selected)
+    
+    focal_villages_1_df <- site_df[site_df$village_unique %in% input$group1_manual, ]
+    
+    nearby_villages_df <- calculate_distances(focal_villages_1_df) %>%
+      filter(between(distance_from_focal, input$radius_village[1], input$radius_village[2]))
+    
+    output$manual_group1_map <- renderLeaflet({
+      leaflet() %>%
+        addTiles() %>%
+        addCircleMarkers(data = focal_villages_1_df,
+                         fill = TRUE,  # Enable fill for markers
+                         fillOpacity = 1,  # Full opacity
+                         fillColor = ~colours,  # Assign colours to fill
+                         stroke = FALSE,
+                         radius = 2
+        ) %>%
+        addCircleMarkers(data = nearby_villages_df,
+                         fill = TRUE,  # Enable fill for markers
+                         fillOpacity = 1,  # Full opacity
+                         fillColor = "black",  # Default colour for unselected villages
+                         radius = 0.5,
+                         stroke = FALSE
+        )
+    })
+    
+  })
+  
+  
+  
+  # Initialize the Leaflet map with all selected villages
+  output$manual_group1_map <- renderLeaflet({
+    leaflet() %>%
+      addTiles() %>%
+      addCircleMarkers(data = site_df,
+                       fill = TRUE,  # Enable fill for markers
+                       fillOpacity = 1,  # Full opacity
+                       fillColor = "black",  # Default colour for unselected villages
+                       radius = 0.5
+      )
+  })
+  
+  
+  # Simulating rodent sampling ----------------------------------------------
+  #' @param seroprevalence expected seroprevalence in simulated population
+  #' @param trap_nights number of trap nights
+  #' @param trap_success trap success Mastomys natalensis (measured as number rodents/number nights)
+  rodentSimulator = function(seroprevalence, abundance = 100000, trap_nights, trap_success, name = "rodent_trapping", simulations = 10000) {
+    
+    # rodent pop (n = abundance, prob = seroprev)
+    # produce seroprevalence status for the rodent population
+    rodent_population = rbinom(n = abundance, size = 1, prob = seroprevalence)
+    
+    # n mastomys sampled
+    total_rodents_trapped = round(trap_nights * trap_success)
+    
+    # run the simulator
+    result = c()
+    for(i in 1:simulations) {
+      sx = sample(rodent_population, total_rodents_trapped, replace = FALSE)
+      seropositivity_rate = sum(sx)/length(sx)
+      result = c(result, seropositivity_rate)
+    }
+    
+    # dataframe
+    result_df = data.frame(seroprevalence = seroprevalence,
+                           trap_nights = trap_nights,
+                           trap_success = trap_success,
+                           total_trapped = total_rodents_trapped,
+                           sim_seropos = result,
+                           name = name)
+    return(result_df)
+    
+  }
+  
+  results <- reactiveVal(data.frame(
+    seroprevalence = numeric(),
+    trap_nights = numeric(),
+    trap_success = numeric(),
+    total_trapped = numeric(),
+    sim_seropos = numeric(),
+    name = character()
+  ))
+  
+  # Store selected model names
+  selected_models <- reactiveVal(character(0))
+  
+  
+  observeEvent(input$run_simulation, {
+    # disable run simulation button
+    shinyjs::disable("run_simulation")
+    
+    sim_name <- paste(input$sim_name, format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
+    sim_name <- gsub("[: ]", "_", sim_name)  # Replace invalid characters
+    abundance <- input$abundance
+    trap_nights <- input$trap_nights
+    trap_success <- input$trap_success
+    n_simulations <- input$n_simulations
+    seroprevalence <- input$seroprevalence
+    
+    simulate_asynchronously <- function() {
+      
+      simulation_results <- rodentSimulator(seroprevalence = seroprevalence,
+                                            abundance = abundance,
+                                            trap_nights = trap_nights,
+                                            trap_success = trap_success,
+                                            name = sim_name,
+                                            simulations = n_simulations)
+      
+      updated_results <- rbind(results(), simulation_results)
+      
+      # Update the reactiveVal
+      results(updated_results)
+      
+      # enable run simulation button
+      shinyjs::enable("run_simulation")
+    }
+    
+    isolate(simulate_asynchronously())
+  })
+  
+  observeEvent(input$load_results, {
+    
+    # Read the saved results from the CSV file
+    loaded_results <- read.csv(here("www", "saved_simulations.csv"), stringsAsFactors = FALSE)
+    
+    # Update the results with the loaded data
+    results(loaded_results)
+  })
+  
+  output$model_checkboxes <- renderUI({
+    checkboxGroupInput("selected_models", "Select Models", choices = unique(results()$name))
+  })
+  
+  # Filter the data based on selected models
+  selected_data <- reactive({
+    if (length(input$selected_models) > 0) {
+      results() %>%
+        filter(name %in% input$selected_models)
+    } else {
+      NULL
+    }
+  })
+  
+  output$simulation_results_table <- renderDT({
+    
+    results() %>%
+      mutate(modified_names = sub("_(\\d{4}-\\d{2}-\\d{2}_\\d{2}_\\d{2}_\\d{2}_\\d{2}_\\d{2}_\\d{2})", "", name)) %>%
+      group_by(modified_names, name) %>%
+      summarise(`Model name` = unique(modified_names),
+                `Expected seroprevalence` = unique(seroprevalence),
+                TN = unique(trap_nights),
+                TS = unique(trap_success),
+                `Mnat sampled` = unique(total_trapped),
+                `mean observed seroprev` = round(mean(sim_seropos), 4),
+                `sd observed seroprev` = round(sd(sim_seropos), 4)) %>%
+      ungroup() %>%
+      select(-c("modified_names", "name"))
+    
+    
+  })
+  
+  output$simulation_results <- renderPlotly({
+    
+    if (!is.null(selected_data())) {
+      
+      summary_data <- selected_data() %>%
+        mutate(modified_names = sub("_(\\d{4}-\\d{2}-\\d{2}_\\d{2}_\\d{2}_\\d{2}_\\d{2}_\\d{2}_\\d{2})", "", name)) %>%
+        group_by(modified_names)
+      
+      plot_ly(data = summary_data, x = ~modified_names, y = ~sim_seropos, color = ~modified_names, type = "box") %>%
+        layout(title = "Simulation Results",
+               xaxis = list(title = "Model"),
+               yaxis = list(title = "Seropositivity Rate"),
+               hovermode = "closest")
+    }
+  })
+
 }
 
 # Run the application 
