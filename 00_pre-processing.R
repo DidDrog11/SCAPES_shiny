@@ -18,7 +18,7 @@ library(here)
 library(DT)
 library(geodata)
 
-sites_raw <- read_rds(here("www", "sites_unfiltered_2km_2023-09-13.rds"))
+sites_raw <- read_rds(here("www", "sites_unfiltered_2km_2023-09-19.rds"))
 
 column_order <- c("village_id", "village", "source", "longitude", "latitude", "lassa_occ", "num_buildings", "treecover_tot_area", "state", "LGA", "SenDist",
                   "shrubland_tot_area", "grassland_tot_area", "builtup_tot_area", "cropland_tot_area",
