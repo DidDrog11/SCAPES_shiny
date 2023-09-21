@@ -769,7 +769,7 @@ ui <- dashboardPage(
                 box(width = 12,
                     id = "map_group3",
                     title = "Group 3 sites mapped",
-                    p("This map shows the location of currently identified Group 2 sites. Additional layers may be from the layers option within the map."),
+                    p("This map shows the location of currently identified Group 3 sites. Additional layers may be from the layers option within the map."),
                     tags$ol(
                       tags$li("Sites that match the primary characteristics of built-up patch area and cropland (at the village level)."),
                       tags$li("Sites nearby (~5km) to those previously identified."),
