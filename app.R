@@ -7,12 +7,15 @@ if(!require(cowplot)) install.packages("cowplot", repos = "http://cran.us.r-proj
 if(!require(readr)) install.packages("readr", repos = "http://cran.us.r-project.org")
 if(!require(leaflet)) install.packages("leaflet", repos = "http://cran.us.r-project.org")
 if(!require(leaflet.extras)) install.packages("leaflet.extras", repos = "http://cran.us.r-project.org")
+if(!require(leaflet.extras2)) install.packages("leaflet.extras2", repos = "http://cran.us.r-project.org")
 if(!require(plotly)) install.packages("plotly", repos = "http://cran.us.r-project.org")
 if(!require(ggiraph)) install.packages("ggiraph", repos = "http://cran.us.r-project.org")
 if(!require(terra)) install.packages("terra", repos = "http://cran.us.r-project.org")
 if(!require(sf)) install.packages("sf", repos = "http://cran.us.r-project.org")
 if(!require(here)) install.packages("here", repos = "http://cran.us.r-project.org")
+if(!require(janitor)) install.packages("janitor", repos = "http://cran.us.r-project.org")
 if(!require(DT)) install.packages("DT", repos = "http://cran.us.r-project.org")
+if(!require(units)) install.packages("units", repos = "http://cran.us.r-project.org")
 if(!require(conflicted)) install.packages("conflicted")
 
 library(shiny)
@@ -24,12 +27,15 @@ library(cowplot)
 library(readr)
 library(leaflet)
 library(leaflet.extras)
+library(leaflet.extras2)
 library(plotly)
 library(ggiraph)
 library(terra)
 library(sf)
 library(here)
+library(janitor)
 library(DT)
+library(units)
 library(conflicted)
 
 conflict_prefer("pickerInput", "shinyWidgets")
@@ -37,6 +43,8 @@ conflict_prefer("box", "shinydashboard")
 conflict_prefer("filter", "dplyr")
 conflict_prefer("dataTableOutput", "DT")
 conflict_prefer("layout", "plotly")
+conflict_prefer("lag", "dplyr")
+conflict_prefer("menuItem", "shinydashboard")
 
 # Data has been produced in an associated but separate repository
 # Data is stored in /www and there is an associated R scrip 00_pre-processing.R that does some final cleaning outside of the app
@@ -50,6 +58,44 @@ adm_0 <- vect(here("www", "gadm", "gadm41_NGA_0_pk.rds"))
 adm_1 <- vect(here("www", "gadm", "gadm41_NGA_1_pk.rds"))
 adm_2 <- vect(here("www", "gadm", "gadm41_NGA_2_pk.rds"))
 
+# Movement data
+movement <- read_csv(here("www", "movement_data.csv")) %>%
+  mutate(utc_datetime = as_datetime(paste(`UTC DATE`, `UTC TIME`), format = "%m/%d/%Y %H:%M:%S", tz = "UTC"),
+         LATITUDE = ifelse(`N/S` == "S", -LATITUDE, LATITUDE),
+         LONGITUDE = ifelse(`E/W` == "W", -LONGITUDE, LONGITUDE))
+
+movement_2 <- read_csv(here("www", "movement_data_2.csv")) %>%
+  mutate(utc_datetime = as_datetime(paste(`UTC DATE`, `UTC TIME`), format = "%Y/%m/%d %H:%M:%S", tz = "UTC"),
+         LATITUDE = ifelse(`N/S` == "S", -LATITUDE, LATITUDE),
+         LONGITUDE = ifelse(`E/W` == "W", -LONGITUDE, LONGITUDE))
+
+movement_3 <- read_csv(here("www", "igotu_test_combined.csv")) %>%
+  mutate(utc_datetime = ymd_hms(Time)) %>%
+  group_by(Region) %>%
+  mutate(local_datetime = with_tz(ymd_hms(`Local Time`), tzone = unique(Region))) %>%
+  mutate(track_id = case_when(
+           local_datetime >= ymd_hms("2024-02-21 00:00:00", tz = "America/Los_Angeles") & local_datetime < ymd_hms("2024-02-21 23:59:59", tz = "America/Los_Angeles") ~ "Track 1",
+           local_datetime >= ymd_hms("2024-02-22 00:00:00", tz = "America/Los_Angeles") & local_datetime < ymd_hms("2024-02-22 23:59:59", tz = "America/Los_Angeles") ~ "Track 2",
+           local_datetime >= ymd_hms("2024-02-23 00:00:00", tz = "America/Los_Angeles") & local_datetime < ymd_hms("2024-02-23 23:59:59", tz = "America/Los_Angeles") ~ "Track 3",
+           local_datetime >= ymd_hms("2024-02-24 00:00:00", tz = "America/Los_Angeles") & local_datetime < ymd_hms("2024-02-24 23:59:59", tz = "America/Los_Angeles") ~ "Track 4",
+           local_datetime >= ymd_hms("2024-02-25 00:00:00", tz = "America/Los_Angeles") & local_datetime < ymd_hms("2024-02-25 23:59:59", tz = "America/Los_Angeles") ~ "Track 5",
+           # Add more conditions for other tracks if needed
+           TRUE ~ "Other Tracks"  # Default case
+         )) %>%
+  ungroup() %>%
+  rename("lat" = Latitude,
+         "lon" = Longitude,
+         "altitude" = `Altitude(m)`,
+         "speed" = `Speed(km/h)`,
+         "heading" = Course,
+         "distance" = `Distance(m)`,
+         "satellites" = `Visible Satellites`,
+         "satellites_cn22" = `Satellites(CN>22)`) %>%
+  mutate(altitude = as_units(altitude, "m"),
+         speed = as_units(speed, "km/h"),
+         distance = as_units(distance, "m"),
+         INDEX = row_number()) %>%
+  select(INDEX, track_id, utc_datetime, local_datetime, lat, lon, altitude, speed, heading, distance, satellites, satellites_cn22, HDOP)
 
 # Define UI ---------------------------------------------------------------
 
@@ -71,7 +117,10 @@ ui <- dashboardPage(
                menuSubItem("Group 2", tabName = "group_2", icon = icon("2")),
                menuSubItem("Group 3", tabName = "group_3", icon = icon("3")),
                menuSubItem("Produce site lists", tabName = "sitelists", icon = icon("arrow-down-1-9"))),
-      menuItem("Rodent sampling simulations", tabName = "rodentsample", icon = icon("paw"))
+      menuItem("Rodent sampling simulations", tabName = "rodentsample", icon = icon("paw")),
+      menuItem("Exploring movement data", icon = icon("person-walking", lib = "font-awesome"),
+               menuSubItem("QStar", tabName = "qstar"),
+               menuSubItem("iGotU", tabName = "igotu"))
     )
   ),
   
@@ -854,9 +903,9 @@ ui <- dashboardPage(
                            column(width = 4, 
                                   numericInput("trap_success", "Proportion of traps set capturing a Mastomys (i.e., Percentage TS/100):", 0.03)),
                            column(width = 4,
-                                           numericInput("seroprevalence", "Expected Mastomys seroprevalence:", 0.15)),
+                                  numericInput("seroprevalence", "Expected Mastomys seroprevalence:", 0.15)),
                            column(width = 4,
-                                           numericInput("n_simulations", "Number of simulations to run:", 10000)),
+                                  numericInput("n_simulations", "Number of simulations to run:", 10000)),
                            actionButton("run_simulation", "Run Simulation"))),
               fluidRow(box(width = 12,
                            uiOutput("model_checkboxes"))),
@@ -864,10 +913,111 @@ ui <- dashboardPage(
                            h2("Simulation results"),
                            DTOutput("simulation_results_table"))),
               fluidRow(box(width = 12,
-                  plotlyOutput("simulation_results",
-                             height = "850px")))
-              )
+                           plotlyOutput("simulation_results",
+                                        height = "850px")))
+      ),
       
+      ## Movement data -----------------------------------------------------------
+      
+      tabItem(tabName = "qstar",
+              fluidRow(
+                box(width = 12,
+                    h1("Exploring human movement data from QStarz devices"),
+                    p("QStarz travel recorder"),
+                    h2("Raw data"),
+                    p("CSV files can be produced from the trackers containing the following variables:"),
+                    tags$ol(
+                      tags$li("TRACK ID: Assume these identify continuous logging periods"),
+                      tags$li("VALID: Unsure, but all responses to this equal FIXED"),
+                      tags$li("UTC DATE: Date in UTC"),
+                      tags$li("UTC TIME: Time in UTC"),
+                      tags$li("LOCAL DATE: Date in Local Timezone, unclear how this is derived"),
+                      tags$li("LOCAL TIME: Time in Local Timezone"),
+                      tags$li("MS: Presumably the milliseconds for the associated time"),
+                      tags$li("LATITUDE: latitude coordinates in decimal degrees"),
+                      tags$li("N/S: whether latitude coordinates are North or South"),
+                      tags$li("LONGITUDE: longitude coordinates in decimal degrees"),
+                      tags$li("E/W: whether longitude coordinates are East or West"),
+                      tags$li("ALTITUDE: altitude, presumably meters above sea level"),
+                      tags$li("SPEED: speed, presumably in meters per second"),
+                      tags$li("HEADING: direction of travel, in 360 degrees I think. Unclear what is considered the true North for the 0 or 360 reading"),
+                      tags$li("G-X, G-Y, G-Z: gyroscope X, Y and Z. Although all readings are 0 so perhaps not used")
+                    )),
+                box(width = 12,
+                    DTOutput("qstar_descriptive"),
+                    h3("Questions:"),
+                    tags$ol(
+                      tags$li("TRACK ID: How are these defined setup? Will 5 days of continuous monitoring produce a single TRACK ID or 5 per day?"),
+                      tags$li("What happens if the battery is replaced mid-tracking?"),
+                      tags$li("What is the accuracy of each coordinate? Is there a way of getting uncertainty for each point or an overall one for the device?")
+                    )
+                )
+              ),
+              fluidRow(
+                box(width = 12,
+                    h2("Visualise test data"),
+                    status = "primary",
+                    solidHeader = TRUE,
+                    collapsible = TRUE,
+                    tabBox(
+                      width = 12,
+                      tabPanel("Track ID 2", plotOutput("plot_track_2"), leafletOutput("map_track_2")),
+                      tabPanel("Track ID 4", plotOutput("plot_track_4"), leafletOutput("map_track_4")),
+                      tabPanel("Track ID 5", plotOutput("plot_track_5"), leafletOutput("map_track_5")),
+                      tabPanel("Track ID 6", plotOutput("plot_track_6"), leafletOutput("map_track_6")),
+                      tabPanel("Track ID 7", plotOutput("plot_track_7"), leafletOutput("map_track_7"))
+                    )
+                )
+              )
+      ),
+      # igotu
+      tabItem(tabName = "igotu",
+              fluidRow(
+                box(width = 12,
+                    h1("Exploring human movement data from iGotU devices"),
+                    p("iGotU GT120B"),
+                    h2("Raw data"),
+                    p("CSV files can be produced from the trackers containing the following variables:"),
+                    tags$ol(
+                      tags$li("Time: formatted datetime in UTC"),
+                      tags$li("Region: name of local timezone"),
+                      tags$li("Local Time: formatted datetime in local time, requires Region as timezone"),
+                      tags$li("Latitude: latitude coordinates in decimal degrees"),
+                      tags$li("Longitude: longitude coordinates in decimal degrees"),
+                      tags$li("Altitude(m): altitude above sea level in metres"),
+                      tags$li("Speed(km/h): speed of the device in kilometres/hour"),
+                      tags$li("Course: heading of the device movement, presumably in degrees"),
+                      tags$li("Distance(m): I think this is the euclidean distance between the current record and the previous record in metres"),
+                      tags$li("Visible satellites: the number of satellites visible to the device for the record"),
+                      tags$li("Satellites (CN>22): satellites being tracked with a carrier-to-noise ratio greater than 22 dB-Hz"),
+                      tags$li("HDOP: Horizontal Dilution Of Precision, quantifies the accuracy of the horizontal position provided by the receiver. Values below 1.0 are considered excellent, 1.0-2.0 are good for most applications, above 2.0 indicate degraded accuracy and so therefore are associated with less reliable position estimates")
+                    )),
+                box(width = 12,
+                    DTOutput("igotu_descriptive"),
+                    h3("Questions:"),
+                    tags$ol(
+                      tags$li("Does not define tracks. Will need to use datetime of different participants to associate with participant."),
+                      tags$li("Missing in Track 4 may have been due to accidentally turning device on and off. Have deactivated button to check scheduled logging.")
+                    )
+                )
+              ),
+              fluidRow(
+                box(width = 12,
+                    h2("Visualise test data"),
+                    status = "primary",
+                    solidHeader = TRUE,
+                    collapsible = TRUE,
+                    tabBox(
+                      width = 12,
+                      tabPanel("Track ID 1", plotOutput("igotu_plot_track_1"), leafletOutput("igotu_map_track_1")),
+                      tabPanel("Track ID 2", plotOutput("igotu_plot_track_2"), leafletOutput("igotu_map_track_2")),
+                      tabPanel("Track ID 3", plotOutput("igotu_plot_track_3"), leafletOutput("igotu_map_track_3")),
+                      tabPanel("Track ID 4", plotOutput("igotu_plot_track_4"), leafletOutput("igotu_map_track_4")),
+                      tabPanel("Track ID 5", plotOutput("igotu_plot_track_5"), leafletOutput("igotu_map_track_5"))
+                    )
+                )
+              )
+      )
     )
   )
 )
@@ -1660,6 +1810,293 @@ server <- function(input, output) {
                hovermode = "closest")
     }
   })
+
+# Movement trackers -------------------------------------------------------
+  
+  output$qstar_descriptive <- renderDT({
+    
+    movement %>%
+      group_by(`TRACK ID`) %>%
+      mutate(time_diff = as.numeric(difftime(utc_datetime, lag(utc_datetime), units = "secs")),
+             above_median = ifelse(time_diff > median(time_diff, na.rm = TRUE), 1, 0),
+             missed_timepoints = ifelse(above_median == 1, (time_diff - median(time_diff, na.rm = TRUE)) / median(time_diff, na.rm = TRUE), 0)) %>%
+      summarise(recorded_timepoints = n(),
+                min_time_diff = min(time_diff, na.rm = TRUE),
+                max_time_diff = max(time_diff, na.rm = TRUE),
+                median_time_dif = median(time_diff, na.rm = TRUE),
+                n_above_median = sum(above_median, na.rm = TRUE),
+                expected_missed_timepoints = round(sum(missed_timepoints, na.rm = TRUE), 0)) %>%
+      clean_names(case = "sentence") %>%
+      DT::datatable()
+    
+    
+  })
+  
+  grouped_movement <- movement %>%
+    group_by(`TRACK ID`) %>%
+    filter(n() > 4) %>%
+    select(`TRACK ID`, INDEX, utc_datetime, lat = LATITUDE, lon = LONGITUDE, altitude = ALTITUDE, speed = SPEED, heading = HEADING) %>%
+    group_split()
+  
+  generate_plot_track <- function(group_data) {
+    
+    group_data$data_present <- 1
+    group_data$utc_datetime <- as.POSIXct(group_data$utc_datetime, format = "%m/%d/%Y %H:%M:%S", tz = "UTC")
+    
+    start_record <- min(group_data$utc_datetime)
+    end_record <- max(group_data$utc_datetime)
+    expected_polling <- median(as.numeric(difftime(group_data$utc_datetime, lag(group_data$utc_datetime), units = "secs")), na.rm = TRUE)
+    polling_times <- seq(from = min(group_data$utc_datetime), to = max(group_data$utc_datetime), by = expected_polling)
+    polling_lines <- data.frame(xintercept = polling_times)
+    
+    ggplot(group_data, aes(x = utc_datetime, y = data_present)) +
+      geom_point(aes(color = factor(data_present)), size = 3) +
+      geom_line() + 
+      geom_vline(xintercept = c(as.numeric(start_record), as.numeric(end_record)), linetype = "solid") +
+      geom_vline(data = polling_lines, aes(xintercept = xintercept), linetype = "dashed") +
+      scale_x_datetime() +
+      scale_y_continuous(breaks = c(0.975, 1, 1.025)) +
+      labs(title = "Timeline of Expected vs Observed Data",
+           x = "UTC Datetime",
+           y = element_blank(),
+           subtitle = "Points represent observed data, dashed lines are timepoints where data is expected") +
+      annotate("text", x = start_record, y = 0.990, label = "Start", vjust = 1, hjust = 1, angle = 90) +
+      annotate("text", x = end_record, y = 0.990, label = "End", vjust = -0.1, hjust = 1, angle = 90) +
+      coord_cartesian(xlim = c(min(group_data$utc_datetime), max(group_data$utc_datetime)),
+                      ylim = c(0.975, 1.025)) +
+      theme_minimal() +
+      theme(axis.text.y = element_blank(),  # Remove y-axis labels
+            axis.ticks.y = element_blank(),  # Remove y-axis ticks
+            axis.title.y = element_blank()) +  # Remove y-axis title
+      guides(colour = "none")
+    
+    
+  }
+  
+  generate_map_track <- function(group_data) {
+    
+    median_time_diff <- median(as.numeric(difftime(group_data$utc_datetime, lag(group_data$utc_datetime), units = "secs")), na.rm = TRUE)
+    
+    # Define colours based on whether points are within the expected time range
+    within_range <- abs(as.numeric(difftime(group_data$utc_datetime, lag(group_data$utc_datetime), units = "secs")) - median_time_diff) <= 0.1 * median_time_diff
+    point_colours <- ifelse(within_range, "darkgreen", "darkred")
+    
+    # Function to calculate destination coordinates based on speed, heading, and distance
+    calculate_destination <- function(lat, lon, speed, heading, distance_scale = 1) {
+      distance_away_lat <- lat + speed / 1000 * distance_scale * sin(heading)
+      distance_away_lon <- lon + speed / 1000 * distance_scale * cos(heading)
+      return(c(distance_away_lat, distance_away_lon))
+    }
+    
+    my_map <- leaflet(group_data) %>%
+      addTiles() %>%
+      addCircleMarkers(
+        lat = ~lat,
+        lng = ~lon,
+        radius = 5,
+        color = point_colours,
+        fillOpacity = 0.6,
+        label = ~as.character(INDEX),
+        labelOptions = labelOptions(direction = "top"),
+        group = "Locations"
+      ) %>%
+      addPolylines(
+        lat = ~lat,
+        lng = ~lon,
+        weight = 1,
+        color = "blue",
+        opacity = 0.8,
+        group = "Paths"
+      )
+    
+    
+    for (i in 1:nrow(group_data)) {
+      # Add a polyline from the current point to a point some distance away
+      destination_coords <- calculate_destination(
+        group_data$lat[i],
+        group_data$lon[i],
+        group_data$speed[i],
+        group_data$heading[i],
+        distance_scale = 0.04  # Adjust this scaling factor as needed
+      )
+      
+      my_map <- addArrowhead(
+        map = my_map,
+        lat = c(group_data$lat[i], destination_coords[1]),
+        lng = c(group_data$lon[i], destination_coords[2]),
+        color = "orange",
+        weight = 2,
+        opacity = 0.8,
+        group = "Headings"
+      )
+    }
+    
+    my_map %>%
+      addLayersControl(
+        overlayGroups = c("Locations", "Paths", "Headings"),  # Specify the overlay groups
+        options = layersControlOptions(collapsed = FALSE)  # Make the control expanded by default
+      )
+    
+  }
+  
+  # Apply the plotting function to each group and assign the output
+  lapply(seq_along(grouped_movement), function(i) {
+    group_data <- grouped_movement[[i]]
+    
+    plot_output_id <- paste0("plot_track_", group_data$`TRACK ID`[1])  # Use the first TRACK ID
+    
+    output[[plot_output_id]] <- renderPlot({
+      generate_plot_track(group_data)
+    })
+    
+    map_output_id <- paste0("map_track_", group_data$`TRACK ID`[1])  # Use the first TRACK ID
+    
+    output[[map_output_id]] <- renderLeaflet({
+      generate_map_track(group_data)
+    })
+  })
+  
+  output$igotu_descriptive <- renderDT({
+    
+    movement_3 %>%
+      group_by(track_id) %>%
+      mutate(time_diff = as.numeric(difftime(utc_datetime, lag(utc_datetime), units = "secs")),
+             above_median = ifelse(time_diff > median(time_diff, na.rm = TRUE), 1, 0),
+             missed_timepoints = ifelse(above_median == 1, (time_diff - median(time_diff, na.rm = TRUE)) / median(time_diff, na.rm = TRUE), 0)) %>%
+      summarise(recorded_timepoints = n(),
+                min_time_diff = min(time_diff, na.rm = TRUE),
+                max_time_diff = max(time_diff, na.rm = TRUE),
+                median_time_dif = median(time_diff, na.rm = TRUE),
+                n_above_median = sum(above_median, na.rm = TRUE),
+                expected_missed_timepoints = round(sum(missed_timepoints, na.rm = TRUE), 0)) %>%
+      clean_names(case = "sentence") %>%
+      DT::datatable()
+    
+  })
+  
+  # Repeat for igotu
+  grouped_movement_igotu <- movement_3 %>%
+    group_by(track_id) %>%
+    filter(n() > 4) %>%
+    group_split()
+  
+  igotu_plot_track <- function(group_data) {
+    
+    group_data$data_present <- 1
+    
+    start_record <- min(group_data$utc_datetime)
+    end_record <- max(group_data$utc_datetime)
+    expected_polling <- median(as.numeric(difftime(group_data$utc_datetime, lag(group_data$utc_datetime), units = "secs")), na.rm = TRUE)
+    polling_times <- seq(from = min(group_data$utc_datetime), to = max(group_data$utc_datetime), by = expected_polling)
+    polling_lines <- data.frame(xintercept = polling_times)
+    
+    ggplot(group_data, aes(x = utc_datetime, y = data_present)) +
+      geom_point(aes(color = factor(data_present)), size = 3) +
+      geom_line() + 
+      geom_vline(xintercept = c(as.numeric(start_record), as.numeric(end_record)), linetype = "solid") +
+      geom_vline(data = polling_lines, aes(xintercept = xintercept), linetype = "dashed", lwd = 0.05) +
+      scale_x_datetime() +
+      scale_y_continuous(breaks = c(0.975, 1, 1.025)) +
+      labs(title = "Timeline of Expected vs Observed Data",
+           x = "UTC Datetime",
+           y = element_blank(),
+           subtitle = "Points represent observed data, dashed lines are timepoints where data is expected") +
+      annotate("text", x = start_record, y = 0.990, label = "Start", vjust = 1, hjust = 1, angle = 90) +
+      annotate("text", x = end_record, y = 0.990, label = "End", vjust = -0.1, hjust = 1, angle = 90) +
+      coord_cartesian(xlim = c(min(group_data$utc_datetime), max(group_data$utc_datetime)),
+                      ylim = c(0.975, 1.025)) +
+      theme_minimal() +
+      theme(axis.text.y = element_blank(),  # Remove y-axis labels
+            axis.ticks.y = element_blank(),  # Remove y-axis ticks
+            axis.title.y = element_blank()) +  # Remove y-axis title
+      guides(colour = "none")
+    
+    
+  }
+  
+  igotu_map_track <- function(group_data) {
+    
+    median_time_diff <- median(as.numeric(difftime(group_data$utc_datetime, lag(group_data$utc_datetime), units = "secs")), na.rm = TRUE)
+    
+    # Define colours based on whether points are within the expected time range
+    within_range <- abs(as.numeric(difftime(group_data$utc_datetime, lag(group_data$utc_datetime), units = "secs")) - median_time_diff) <= 0.1 * median_time_diff
+    point_colours <- ifelse(within_range, "darkgreen", "darkred")
+    
+    # Function to calculate destination coordinates based on speed, heading, and distance
+    calculate_destination <- function(lat, lon, speed, heading, distance_scale = 1) {
+      distance_away_lat <- lat + as.numeric(speed) / 1000 * distance_scale * sin(heading)
+      distance_away_lon <- lon + as.numeric(speed) / 1000 * distance_scale * cos(heading)
+      return(c(distance_away_lat, distance_away_lon))
+    }
+    
+    my_map <- leaflet(group_data) %>%
+      addTiles() %>%
+      addCircleMarkers(
+        lat = ~lat,
+        lng = ~lon,
+        radius = 5,
+        color = point_colours,
+        fillOpacity = 0.6,
+        label = ~as.character(INDEX),
+        labelOptions = labelOptions(direction = "top"),
+        group = "Locations"
+      ) %>%
+      addPolylines(
+        lat = ~lat,
+        lng = ~lon,
+        weight = 1,
+        color = "blue",
+        opacity = 0.8,
+        group = "Paths"
+      )
+    
+    
+    for (i in 1:nrow(group_data)) {
+      # Add a polyline from the current point to a point some distance away
+      destination_coords <- calculate_destination(
+        group_data$lat[i],
+        group_data$lon[i],
+        group_data$speed[i],
+        group_data$heading[i],
+        distance_scale = 0.04  # Adjust this scaling factor as needed
+      )
+      
+      my_map <- addArrowhead(
+        map = my_map,
+        lat = c(group_data$lat[i], destination_coords[1]),
+        lng = c(group_data$lon[i], destination_coords[2]),
+        color = "orange",
+        weight = 2,
+        opacity = 0.8,
+        group = "Headings"
+      )
+    }
+    
+    my_map %>%
+      addLayersControl(
+        overlayGroups = c("Locations", "Paths", "Headings"),  # Specify the overlay groups
+        options = layersControlOptions(collapsed = FALSE)  # Make the control expanded by default
+      )
+    
+  }
+  
+  # Apply the plotting function to each igotugroup and assign the output
+  lapply(seq_along(grouped_movement_igotu), function(i) {
+    group_data <- grouped_movement_igotu[[i]]
+    
+    plot_output_id <- paste0("igotu_plot_track_", str_extract_all(group_data$track_id[1], "\\d+"))  # Use the first TRACK ID
+    
+    output[[plot_output_id]] <- renderPlot({
+      igotu_plot_track(group_data)
+    })
+    
+    map_output_id <- paste0("igotu_map_track_", str_extract_all(group_data$track_id[1], "\\d+"))  # Use the first TRACK ID
+    
+    output[[map_output_id]] <- renderLeaflet({
+      igotu_map_track(group_data)
+    })
+  })
+  
 
 }
 
