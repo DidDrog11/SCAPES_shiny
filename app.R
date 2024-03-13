@@ -79,6 +79,7 @@ movement_3 <- read_csv(here("www", "igotu_test_combined.csv")) %>%
            local_datetime >= ymd_hms("2024-02-23 00:00:00", tz = "America/Los_Angeles") & local_datetime < ymd_hms("2024-02-23 23:59:59", tz = "America/Los_Angeles") ~ "Track 3",
            local_datetime >= ymd_hms("2024-02-24 00:00:00", tz = "America/Los_Angeles") & local_datetime < ymd_hms("2024-02-24 23:59:59", tz = "America/Los_Angeles") ~ "Track 4",
            local_datetime >= ymd_hms("2024-02-25 00:00:00", tz = "America/Los_Angeles") & local_datetime < ymd_hms("2024-02-25 23:59:59", tz = "America/Los_Angeles") ~ "Track 5",
+           local_datetime >= ymd_hms("2024-03-02 00:00:00", tz = "America/Los_Angeles") & local_datetime < ymd_hms("2024-03-11 23:59:59", tz = "America/Los_Angeles") ~ "Track 6",
            # Add more conditions for other tracks if needed
            TRUE ~ "Other Tracks"  # Default case
          )) %>%
@@ -1013,7 +1014,8 @@ ui <- dashboardPage(
                       tabPanel("Track ID 2", plotOutput("igotu_plot_track_2"), leafletOutput("igotu_map_track_2")),
                       tabPanel("Track ID 3", plotOutput("igotu_plot_track_3"), leafletOutput("igotu_map_track_3")),
                       tabPanel("Track ID 4", plotOutput("igotu_plot_track_4"), leafletOutput("igotu_map_track_4")),
-                      tabPanel("Track ID 5", plotOutput("igotu_plot_track_5"), leafletOutput("igotu_map_track_5"))
+                      tabPanel("Track ID 5", plotOutput("igotu_plot_track_5"), leafletOutput("igotu_map_track_5")),
+                      tabPanel("Track ID 6", plotOutput("igotu_plot_track_6"), leafletOutput("igotu_map_track_6"))
                     )
                 )
               )
